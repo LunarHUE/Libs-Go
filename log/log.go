@@ -3,9 +3,6 @@ package log
 import (
 	"fmt"
 	"log"
-	"path/filepath"
-	"runtime"
-	"strings"
 	"sync"
 	"time"
 )
@@ -68,35 +65,6 @@ func updateLogFunctions() {
 		Debug = func(...any) {}
 		Debugf = func(string, ...any) {}
 	}
-}
-
-func findCaller() (string, int) {
-	var file string
-	var line int
-	var ok bool
-	const maxStackDepth = 10
-	loggerPackagePath := "github.com/lunarhue/go-stack/libs/log"
-
-	for skip := 3; skip < maxStackDepth; skip++ {
-		var pc uintptr
-		pc, file, line, ok = runtime.Caller(skip)
-		if !ok {
-			return "???", 0
-		}
-
-		fn := runtime.FuncForPC(pc)
-		if fn != nil {
-			funcName := fn.Name()
-			if !strings.HasPrefix(funcName, loggerPackagePath) {
-				return filepath.Base(file), line
-			}
-		} else {
-			if !strings.Contains(file, loggerPackagePath) {
-				return filepath.Base(file), line
-			}
-		}
-	}
-	return "???", 0
 }
 
 type Destination int
