@@ -24,9 +24,11 @@ func writeFileLineLocked(line string) {
 		return
 	}
 	if _, err := fmt.Fprintf(logFile, "%s\n", line); err != nil {
-		// TODO(Phase 2): colorRed is unconditional here; let the TTY-gating sweep
-		// strip color when stderr isn't a terminal.
-		fmt.Fprintf(os.Stderr, "%s ERROR: Failed to write internal message to log file %s: %v%s\n", colorRed, logFilePath, err, colorReset)
+		red, reset := "", ""
+		if stderrIsTTY {
+			red, reset = colorRed, colorReset
+		}
+		fmt.Fprintf(os.Stderr, "%s ERROR: Failed to write internal message to log file %s: %v%s\n", red, logFilePath, err, reset)
 	}
 }
 
@@ -51,7 +53,7 @@ func InitFileLogging(filePath string) error {
 			// and-disable must leave a marker, or the file ends mid-stream and is
 			// indistinguishable from a crash. Write-only, so it can't replay elsewhere.
 			now := time.Now()
-			line := formatLog(FILE, INFO, &now, "Closing log file: "+logFilePath)
+			line := formatLog(FILE, INFO, &now, "Closing log file: "+logFilePath, false)
 			writeFileLineLocked(line)
 			logFile.Close()
 			logFile = nil
@@ -103,7 +105,7 @@ func CloseFile() {
 		// formatLog(FILE, ...) runs findCaller, so the closing record reports the
 		// CloseFile *caller's* file:line (who closed it), not file.go. Intentional —
 		// don't "fix" this to point at file.go.
-		line := formatLog(FILE, INFO, &now, "Closing log file: "+logFilePath)
+		line := formatLog(FILE, INFO, &now, "Closing log file: "+logFilePath, false)
 		writeFileLineLocked(line) // write-only: must NOT buffer (would replay into next file)
 		logFile.Close()
 		logFile = nil
