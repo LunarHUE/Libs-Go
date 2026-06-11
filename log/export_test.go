@@ -27,3 +27,15 @@ func ForceLevel(l LogLevel) (restore func()) {
 	currentLevel.Store(int32(l))
 	return func() { currentLevel.Store(int32(prev)) }
 }
+
+// PreInitBufferSize is the pre-init ring capacity, exposed so tests assert against the real
+// constant instead of a hard-coded size that could drift.
+const PreInitBufferSize = preInitBufferSize
+
+// PreInitBufferLen reports how many lines the pre-init ring currently holds, read under
+// logFileMu (the same lock the ring is mutated under).
+func PreInitBufferLen() int {
+	logFileMu.Lock()
+	defer logFileMu.Unlock()
+	return preInitLen
+}
