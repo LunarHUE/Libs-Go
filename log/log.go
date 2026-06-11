@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/term"
@@ -20,7 +21,10 @@ const (
 )
 
 var (
-	currentLevel LogLevel = INFO
+	// currentLevel is the minimum level; atomic so SetLevel and the per-call level checks
+	// are race-free without a mutex. LogLevel is an int; stored/loaded as int32. Its zero
+	// value is 0 == PANIC, not the intended INFO default, so init() stores INFO explicitly.
+	currentLevel atomic.Int32
 
 	// consoleMu guards the entire console-render sequence — dedup decision, the
 	// cursor-rewrite-or-fresh-print, and the dedup-state update — as one atomic unit. It
@@ -44,51 +48,40 @@ var (
 	stderrIsTTY = term.IsTerminal(int(os.Stderr.Fd())) && os.Getenv("NO_COLOR") == ""
 )
 
-var Info func(...any)
-var Infof func(string, ...any)
-var Request func(...any)
-var Requestf func(string, ...any)
-var Warn func(...any)
-var Warnf func(string, ...any)
-var Error func(...any)
-var Errorf func(string, ...any)
-var Debug func(...any)
-var Debugf func(string, ...any)
-var Panic func(...any)
-var Panicf func(string, ...any)
+// The public log functions are declared (not reassignable vars) so the level switch can no
+// longer race a concurrent call by rewriting a function value. Non-debug functions always
+// call logInternal (which filters the console by level and always writes the file). The
+// non-f variants use fmt.Sprint to match the previous closures byte-for-byte, including
+// Sprint's quirk of inserting spaces only between non-string operands.
+func Info(args ...any)                 { logInternal(INFO, nil, "%s", fmt.Sprint(args...)) }
+func Infof(format string, a ...any)    { logInternal(INFO, nil, format, a...) }
+func Warn(args ...any)                 { logInternal(WARN, nil, "%s", fmt.Sprint(args...)) }
+func Warnf(format string, a ...any)    { logInternal(WARN, nil, format, a...) }
+func Error(args ...any)                { logInternal(ERROR, nil, "%s", fmt.Sprint(args...)) }
+func Errorf(format string, a ...any)   { logInternal(ERROR, nil, format, a...) }
+func Request(args ...any)              { logInternal(REQUEST, nil, "%s", fmt.Sprint(args...)) }
+func Requestf(format string, a ...any) { logInternal(REQUEST, nil, format, a...) }
 
-// updateLogFunctions re-assigns the public log functions based on the current level.
-// This is primarily to make Debug/Debugf no-ops if the level is higher.
-func updateLogFunctions() {
-	levelMutex.RLock()
-	lvl := currentLevel
-	levelMutex.RUnlock()
+func Panic(args ...any) {
+	logInternal(PANIC, func(_ string, a ...any) { log.Panicln(a...) }, "%s", fmt.Sprint(args...))
+}
+func Panicf(format string, a ...any) { logInternal(PANIC, log.Panicf, format, a...) }
 
-	paniclnWrapper := func(format string, args ...any) {
-		log.Panicln(args...)
+// Debug/Debugf return BEFORE logInternal when the level is below DEBUG. Besides skipping
+// the formatting cost, this preserves the prior behavior that a disabled debug message
+// never reaches the file: logInternal writes logToFile unconditionally, so the gate must
+// live here, not inside logInternal. (The old code achieved this with no-op closures.)
+func Debug(args ...any) {
+	if GetLevel() < DEBUG {
+		return
 	}
-
-	// --- Corrected Calls for non-f functions ---
-	Info = func(args ...any) { logInternal(INFO, nil, "%s", fmt.Sprint(args...)) }
-	Warn = func(args ...any) { logInternal(WARN, nil, "%s", fmt.Sprint(args...)) }
-	Error = func(args ...any) { logInternal(ERROR, nil, "%s", fmt.Sprint(args...)) }
-	Panic = func(args ...any) { logInternal(PANIC, paniclnWrapper, "%s", fmt.Sprint(args...)) }
-	Request = func(args ...any) { logInternal(REQUEST, nil, "%s", fmt.Sprint(args...)) }
-
-	// --- Calls for -f functions remain the same ---
-	Infof = func(format string, args ...any) { logInternal(INFO, nil, format, args...) }
-	Warnf = func(format string, args ...any) { logInternal(WARN, nil, format, args...) }
-	Errorf = func(format string, args ...any) { logInternal(ERROR, nil, format, args...) }
-	Panicf = func(format string, args ...any) { logInternal(PANIC, log.Panicf, format, args...) }
-	Requestf = func(format string, args ...any) { logInternal(REQUEST, nil, format, args...) }
-
-	if lvl >= DEBUG {
-		Debug = func(args ...any) { logInternal(DEBUG, nil, "%s", fmt.Sprint(args...)) }
-		Debugf = func(format string, args ...any) { logInternal(DEBUG, nil, format, args...) }
-	} else {
-		Debug = func(...any) {}
-		Debugf = func(string, ...any) {}
+	logInternal(DEBUG, nil, "%s", fmt.Sprint(args...))
+}
+func Debugf(format string, a ...any) {
+	if GetLevel() < DEBUG {
+		return
 	}
+	logInternal(DEBUG, nil, format, a...)
 }
 
 type Destination int
@@ -225,5 +218,5 @@ func logInternal(level LogLevel, panicFunc func(string, ...interface{}), format 
 }
 
 func init() {
-	updateLogFunctions()
+	currentLevel.Store(int32(INFO)) // explicit: the atomic's zero value would be PANIC, not INFO
 }

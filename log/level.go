@@ -3,7 +3,6 @@ package log
 import (
 	"fmt"
 	"strings"
-	"sync"
 )
 
 type LogLevel int
@@ -35,8 +34,6 @@ var levelColors = map[LogLevel]string{
 	REQUEST: colorDarkGrey,
 }
 
-var levelMutex sync.RWMutex
-
 // SetLevelFromString sets the minimum log level based on a string identifier.
 // Valid levels: "debug", "info", "warn", "error", "panic". Case-insensitive.
 func SetLevelFromString(levelStr string) error {
@@ -60,21 +57,20 @@ func SetLevelFromString(levelStr string) error {
 	return nil
 }
 
+// SetLevel sets the minimum log level. The equal-level short-circuit is a best-effort dedup,
+// NOT atomic: two concurrent SetLevel calls can both pass the check and both store/log. That
+// is harmless — last-write-wins on the value, at worst one duplicate "Log level set" line —
+// and is intentionally left as-is. Do NOT "fix" it with a mutex or CAS loop: that would
+// reintroduce the locking this design removed, just to suppress a benign duplicate line.
 func SetLevel(level LogLevel) {
-	if level == currentLevel {
+	if level == GetLevel() {
 		return
 	}
-
-	levelMutex.Lock()
-	currentLevel = level
+	currentLevel.Store(int32(level))
 	logInternal(INFO, nil, "Log level set to %s", levelNames[level])
-	levelMutex.Unlock()
-	updateLogFunctions()
 }
 
 // GetLevel returns the current minimum log level.
 func GetLevel() LogLevel {
-	// levelMutex.RLock()
-	// defer levelMutex.RUnlock()
-	return currentLevel
+	return LogLevel(currentLevel.Load())
 }

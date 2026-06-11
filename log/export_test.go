@@ -23,11 +23,7 @@ func SwapConsole(w io.Writer, isTTY bool) (restore func()) {
 // public SetLevel produces — so a test can pin the level (e.g. INFO, to keep dest ==
 // STDOUT) without polluting a swapped console buffer. Returns a restore func.
 func ForceLevel(l LogLevel) (restore func()) {
-	prev := currentLevel
-	currentLevel = l
-	updateLogFunctions()
-	return func() {
-		currentLevel = prev
-		updateLogFunctions()
-	}
+	prev := GetLevel()
+	currentLevel.Store(int32(l))
+	return func() { currentLevel.Store(int32(prev)) }
 }
