@@ -6,9 +6,11 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
+
+	"github.com/spf13/viper"
 )
 
-func loadConfigFile(filePath string, embedFile *embed.FS) error {
+func loadConfigFile(v *viper.Viper, filePath string, embedFile *embed.FS) error {
 	ext := strings.TrimPrefix(filepath.Ext(filePath), ".")
 	if ext == "" {
 		return fmt.Errorf("cannot determine config type for default config: %s (missing extension)", filePath)

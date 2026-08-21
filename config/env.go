@@ -5,9 +5,10 @@ import (
 	"strings"
 
 	"github.com/lunarhue/libs-go/log"
+	"github.com/spf13/viper"
 )
 
-func loadConfigEnv(prefix string, overrideFilePath string) error {
+func loadConfigEnv(v *viper.Viper, prefix string, overrideFilePath string) error {
 	replacer := strings.NewReplacer(
 		"-", "_",
 		".", "_",
