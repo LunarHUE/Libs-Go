@@ -86,5 +86,22 @@ func LoadConfig[T any](
 		return nil, fmt.Errorf("unable to decode with environment variables: %v", err)
 	}
 
+	// --- Source Tracking ---
+	if o.sources != nil {
+		defaultKeys := map[string]bool{}
+		if defaultConfigPath != "" {
+			if defaultKeys, err = layerKeys(defaultConfigPath, embeddedFS); err != nil {
+				return nil, fmt.Errorf("snapshotting default config keys: %w", err)
+			}
+		}
+		overrideKeys := map[string]bool{}
+		if overrideFilePath != "" {
+			if overrideKeys, err = layerKeys(overrideFilePath, nil); err != nil {
+				return nil, fmt.Errorf("snapshotting override config keys: %w", err)
+			}
+		}
+		*o.sources = buildSources(v, envPrefix, o.envBindings, defaultKeys, overrideKeys)
+	}
+
 	return &config, nil
 }

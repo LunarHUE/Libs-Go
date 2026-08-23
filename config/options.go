@@ -6,6 +6,7 @@ type Option func(*options)
 type options struct {
 	envBindings []envBinding
 	skipEtcd    bool
+	sources     *Sources
 }
 
 type envBinding struct {
